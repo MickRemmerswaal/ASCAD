@@ -6,6 +6,8 @@ if os.environ.get('DISPLAY','') == '':
 	mpl.use('Agg')
 else:
 	mpl.use('TkAgg')
+
+mpl.use('TkAgg')
 import os.path
 import sys
 import h5py
@@ -357,6 +359,7 @@ if __name__ == "__main__":
 		target_byte=2
 		multilabel=0
 		simulated_key=0
+		save_file = "test_ouptut"
 	else:
 		#get parameters from user input
 		model_file, ascad_database, num_traces, target_byte, multilabel, simulated_key, save_file  = read_parameters_from_file(sys.argv[1])

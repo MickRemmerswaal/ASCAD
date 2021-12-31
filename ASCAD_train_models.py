@@ -3,6 +3,7 @@ import os.path
 import sys
 import h5py
 import numpy as np
+import datetime
 
 import tensorflow as tf
 from tensorflow.keras.models import Model, Sequential
@@ -14,6 +15,9 @@ from tensorflow.keras.optimizers import RMSprop, Adam
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.models import load_model
+
+from preprocess import PCA_Preprocessor, LDA_Preprocessor, DL_Preprocessor, SOST_Preprocessor
+
 
 def check_file_exists(file_path):
 	file_path = os.path.normpath(file_path)
@@ -200,9 +204,10 @@ def resnet_v1(input_shape, depth, num_classes=256, without_permind=0):
 		x_sbox_l.append(sbox_branch(x,i))
 		x_permind_l.append(permind_branch(x,i))
 	if without_permind!=1:
-	  model = Model(inputs, [x_alpha, x_beta] + x_sbox_l + x_permind_l, name='extract_resnet')
+		model = Model(inputs, [x_alpha, x_beta] + x_sbox_l + x_permind_l, name='extract_resnet')
 	else:
-	  model = Model(inputs, [x_alpha, x_beta] + x_sbox_l, name='extract_resnet_without_permind')
+		model = Model(inputs, [x_alpha, x_beta] + x_sbox_l, name='extract_resnet_without_permind')
+
 	optimizer = Adam()
 	model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
 	return model
@@ -279,7 +284,8 @@ def multilabel_without_permind_to_categorical(Y):
 	return y
 
 #### Training high level function
-def train_model(X_profiling, Y_profiling, model, save_file_name, epochs=150, batch_size=100, multilabel=0, validation_split=0, early_stopping=0):
+def train_model(X_profiling, Y_profiling, model, save_file_name, epochs=150, batch_size=100, multilabel=0, 
+				validation_split=0, early_stopping=0, tensorboard=False, preprocessor="Baseline"):
 	check_file_exists(os.path.dirname(save_file_name))
 	# Save model calllback
 	save_model = ModelCheckpoint(save_file_name)
@@ -314,6 +320,13 @@ def train_model(X_profiling, Y_profiling, model, save_file_name, epochs=150, bat
 		y=multilabel_without_permind_to_categorical(Y_profiling)
 	else:
 		y=to_categorical(Y_profiling, num_classes=256)
+
+	if tensorboard:
+		
+		log_dir = "logs/train/" + preprocessor
+		tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+		callbacks.append(tensorboard_callback)
+	
 	history = model.fit(x=Reshaped_X_profiling, y=y, batch_size=batch_size, verbose = 1, validation_split=validation_split, epochs=epochs, callbacks=callbacks)
 	return history
 
@@ -360,18 +373,53 @@ if __name__ == "__main__":
 		#CNN training
 		#network_type = "cnn2"
 		#training_model = "ATMEGA_AES_v1/ATM_AES_v1_fixed_key/ASCAD_data/ASCAD_trained_models/my_cnn_best_desync0_epochs75_batchsize200.h5"
+
 		validation_split = 0
 		multilabel = 0
 		train_len = 0
 		epochs = 75
 		batch_size = 200
 		bugfix = 0
+		early_stopping = False
+		tensorboard = True
+	
 	else:
 		#get parameters from user input
 		ascad_database, training_model, network_type, epochs, batch_size, train_len, validation_split, multilabel, early_stopping = read_parameters_from_file(sys.argv[1])
 
 	#load traces
 	(X_profiling, Y_profiling), (X_attack, Y_attack) = load_ascad(ascad_database)
+
+	
+	###################################
+	### ADD PREPROCESSING STEP HERE ###
+	###################################
+	
+	################################
+	###   Preprocessing tpyes    ### 
+	### implemented & selectable ###
+	###           PCA            ### 
+	###           LDA            ###
+	###                          ###
+	###     To be implemented:   ###
+	###           SOST           ###
+	###            DL            ###
+	################################
+
+	preprocessor = "LDA"
+
+	if preprocessor == "LDA":
+		LDA_processor = LDA_Preprocessor()
+		X_profiling = LDA_processor.preprocess(X_profiling, Y_profiling)
+		X_attack = LDA_processor.preprocess(X_attack, Y_attack)
+	
+	elif preprocessor == "PCA":
+		pca_variance = 0.9
+		PCA_processor = PCA_Preprocessor()
+		X_profiling = PCA_processor.preprocess(pca_variance, X_profiling)
+		X_attack = PCA_processor.preprocess(pca_variance, X_attack)
+	
+
 
 	#get network type
 	if(network_type=="mlp"):
@@ -388,11 +436,13 @@ if __name__ == "__main__":
 		best_model = resnet_v1((15000,1), 19, without_permind=1)
 	else: #display an error and abort
 		print("Error: no topology found for network '%s' ..." % network_type)
-		sys.exit(-1);
+		sys.exit(-1)
 	#  print best_model.summary()
 
 	### training
 	if (train_len == 0):
-		train_model(X_profiling, Y_profiling, best_model, training_model, epochs, batch_size, multilabel, validation_split, early_stopping)
+		train_model(X_profiling, Y_profiling, best_model, training_model, epochs, batch_size, multilabel, 
+					validation_split, early_stopping, tensorboard=tensorboard, preprocessor=preprocessor)
 	else:
-		train_model(X_profiling[:train_len], Y_profiling[:train_len], best_model, training_model, epochs, batch_size, multilabel, validation_split, early_stopping)
+		train_model(X_profiling[:train_len], Y_profiling[:train_len], best_model, training_model, epochs, batch_size, multilabel, 
+					validation_split, early_stopping, tensorboard=tensorboard)
