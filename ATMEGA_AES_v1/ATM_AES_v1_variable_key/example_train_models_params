@@ -4,4 +4,5 @@
 "network_type": "mlp",
 "epochs": 100,
 "batch_size": 200
+"early_stopping": False
 }
