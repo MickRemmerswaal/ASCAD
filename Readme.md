@@ -1,3 +1,11 @@
+## Personal
+This is a forked version of the ASCAD SCA traces database and SCA DL attacks. More info on this can be read below.
+
+This was forked for research into Deep Learning based Point of Interest Selection in SCA attacks. This research was conducted as my Master Thesis for the Artificial Intelligence Master at the Leiden University in The Netherlands.
+
+
+
+## ASCAD
 ## About
 
 **ASCAD** (ANSSI SCA Database) is a set of databases that aims at providing a benchmarking reference for the SCA community: the purpose is to have something similar to the [MNIST database](http://yann.lecun.com/exdb/mnist/) that the Machine Learning community has been using for quite a while now to evaluate classification algorithms performance.
