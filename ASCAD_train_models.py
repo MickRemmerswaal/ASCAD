@@ -406,20 +406,23 @@ if __name__ == "__main__":
 	###            DL            ###
 	################################
 
-	preprocessor = "LDA"
+	preprocessor = "SOST"
 
 	if preprocessor == "LDA":
-		LDA_processor = LDA_Preprocessor()
-		X_profiling = LDA_processor.preprocess(X_profiling, Y_profiling)
-		X_attack = LDA_processor.preprocess(X_attack, Y_attack)
+		LDA = LDA_Preprocessor()
+		X_profiling = LDA.preprocess(X_profiling, Y_profiling)
+		X_attack = LDA.preprocess(X_attack, Y_attack)
 	
 	elif preprocessor == "PCA":
 		pca_variance = 0.9
-		PCA_processor = PCA_Preprocessor()
-		X_profiling = PCA_processor.preprocess(pca_variance, X_profiling)
-		X_attack = PCA_processor.preprocess(pca_variance, X_attack)
-	
+		PCA = PCA_Preprocessor()
+		X_profiling = PCA.preprocess(pca_variance, X_profiling)
+		X_attack = PCA.preprocess(pca_variance, X_attack)
 
+	elif preprocessor == "SOST":
+		SOST = SOST_Preprocessor()
+		X_profiling = SOST.preprocess(x_input=X_profiling, y_input=Y_profiling)
+		X_attack = SOST.preprocess(X_attack, Y_attack)
 
 	#get network type
 	if(network_type=="mlp"):

@@ -1,7 +1,8 @@
+from re import template
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-
+from timeit import default_timer as timer
 
 class PCA_Preprocessor:
     # A relatively simple PCA preprocessor
@@ -36,16 +37,40 @@ class SOST_Preprocessor:
     def __init__(self) -> None:
         pass
 
-    def preprocess(self, n_features, input):
+    def preprocess(self, x_input, y_input):
+        indices = self.calc_prominent_features(x_input, y_input)
 
+        return x_input[:indices]
+     
+    def calc_prominent_features(self, x_input, y_input):
+        # Group by label
+        start = timer()
+        groups = []
+        for i in range(5):
+            groups.append([])
+            for j in range(len(x_input)):
+                if y_input[j] == i:
+                    groups[i].append(j)
+        end = timer()
 
-
-        return input
-
-    def select_top_n(self, n_features, input):
-
-        return 
+        print("time taken: " + str((end - start)) + " seconds")
         
+        start = timer()
+        groups1 = []
+        for i in range(256):
+            arr = np.nonzero(y_input == i)
+            arr = arr[0]
+            groups1.append(arr)
+        end = timer()
+
+        print("time taken: " + str((end - start)) + " seconds")
+        
+        
+        # Calculate mean and variance of each trace per label
+        # Normalize if necessary
+
+        return groups
+
 class DL_Preprocessor:
     
     def __init__(self) -> None:
