@@ -103,7 +103,6 @@ def cnn_best2(classes=256,input_dim=1400):
 	model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
 	return model
 
-
 ### Resnet layer sub-function of ResNetSCA
 def resnet_layer(inputs,
 				 num_filters=16,
@@ -407,6 +406,7 @@ if __name__ == "__main__":
 	################################
 
 	preprocessor = "SOST"
+	amount_of_values = 256
 
 	if preprocessor == "LDA":
 		LDA = LDA_Preprocessor()
@@ -420,9 +420,10 @@ if __name__ == "__main__":
 		X_attack = PCA.preprocess(pca_variance, X_attack)
 
 	elif preprocessor == "SOST":
-		SOST = SOST_Preprocessor()
-		X_profiling = SOST.preprocess(x_input=X_profiling, y_input=Y_profiling)
-		X_attack = SOST.preprocess(X_attack, Y_attack)
+		n_poi = 10
+		SOST = SOST_Preprocessor(amount_of_values)
+		X_profiling = SOST.preprocess(X_profiling, Y_profiling, n_poi)
+		X_attack = SOST.preprocess(X_attack, Y_attack, n_poi)
 
 	#get network type
 	if(network_type=="mlp"):
