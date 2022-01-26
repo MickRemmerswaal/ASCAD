@@ -399,9 +399,9 @@ if __name__ == "__main__":
 	### implemented & selectable ###
 	###           PCA            ### 
 	###           LDA            ###
+	###           SOST           ###
 	###                          ###
 	###     To be implemented:   ###
-	###           SOST           ###
 	###            DL            ###
 	################################
 

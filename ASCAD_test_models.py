@@ -14,6 +14,7 @@ import h5py
 import numpy as np
 import matplotlib.pyplot as plt
 import ast
+from preprocess import LDA_Preprocessor, PCA_Preprocessor, SOST_Preprocessor
 
 import tensorflow as tf
 from tensorflow.keras.models import load_model
@@ -91,6 +92,7 @@ def load_sca_model(model_file):
 	check_file_exists(model_file)
 	try:
 		model = load_model(model_file)
+		model.summary()
 	except:
 		print("Error: can't load Keras model file '%s'" % model_file)
 		sys.exit(-1)
@@ -253,7 +255,6 @@ def multilabel_without_permind_predict(predictions):
 
 	return predictions_sbox
 
-
 # Check a saved model against one of the ASCAD databases Attack traces
 def check_model(model_file, ascad_database, num_traces=2000, target_byte=2, multilabel=0, simulated_key=0, save_file=""):
 	check_file_exists(model_file)
@@ -262,6 +263,26 @@ def check_model(model_file, ascad_database, num_traces=2000, target_byte=2, mult
 	(X_profiling, Y_profiling), (X_attack, Y_attack), (Metadata_profiling, Metadata_attack) = load_ascad(ascad_database, load_metadata=True)
 	# Load model
 	model = load_sca_model(model_file)
+	
+	# Preprocess the data
+	preprocessor = "LDA"
+	amount_of_values = 256
+	input_shape = 700
+
+	if preprocessor == "LDA":
+		LDA = LDA_Preprocessor()
+		input_data = LDA.preprocess(X_attack, Y_attack)
+	
+	elif preprocessor == "PCA":
+		pca_variance = 0.9
+		PCA = PCA_Preprocessor()
+		input_data = PCA.preprocess(pca_variance, X_attack)
+
+	elif preprocessor == "SOST":
+		n_poi = 700
+		SOST = SOST_Preprocessor(amount_of_values)
+		input_data = SOST.preprocess(X_attack, Y_attack, n_poi)
+
 	# Get the input layer shape
 	input_layer_shape = model.get_layer(index=0).input_shape[0]
 	if isinstance(model.get_layer(index=0).input_shape, list):
@@ -283,6 +304,8 @@ def check_model(model_file, ascad_database, num_traces=2000, target_byte=2, mult
 	else:
 		print("Error: model input shape length %d is not expected ..." % len(input_layer_shape))
 		sys.exit(-1)
+
+
 	# Predict our probabilities
 	predictions = model.predict(input_data)
 	if (multilabel!=0):
@@ -302,7 +325,7 @@ def check_model(model_file, ascad_database, num_traces=2000, target_byte=2, mult
 		plt.grid(True)
 		plt.legend(loc='upper right')
 		if (save_file != ""):
-			plt.savefig(save_file)
+			plt.savefig(save_file + preprocessor)
 		else:
 			plt.show(block=False)
 
@@ -359,7 +382,7 @@ if __name__ == "__main__":
 		target_byte=2
 		multilabel=0
 		simulated_key=0
-		save_file = "test_ouptut"
+		save_file = "test_ouptut_"
 	else:
 		#get parameters from user input
 		model_file, ascad_database, num_traces, target_byte, multilabel, simulated_key, save_file  = read_parameters_from_file(sys.argv[1])
