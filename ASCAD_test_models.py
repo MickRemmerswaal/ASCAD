@@ -331,7 +331,7 @@ def check_model(model_file, ascad_database, num_traces=2000, target_byte=2, mult
 
 	else:
 		predictions_sbox_i = predictions
-	  # We test the rank over traces of the Attack dataset, with a step of 10 traces
+	    # We test the rank over traces of the Attack dataset, with a step of 10 traces
 		ranks = full_ranks(predictions_sbox_i, X_attack, Metadata_attack, 0, num_traces, 10, target_byte, simulated_key)
 		# We plot the results
 		x = [ranks[i][0] for i in range(0, ranks.shape[0])]
