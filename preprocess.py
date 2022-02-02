@@ -11,11 +11,11 @@ class PCA_Preprocessor:
     
     def __init__(self) -> None:
         pass
-    
-    def preprocess(self, n_componenets, input):
-        pca = PCA(n_componenets)
-        
+
+    def preprocess(self, input, n_pois):
+        pca = PCA(n_components=n_pois)
         processed_input = pca.fit_transform(input)
+
         return processed_input, [0,0]
 
 class LDA_Preprocessor:
@@ -25,11 +25,11 @@ class LDA_Preprocessor:
 
     def __init__(self) -> None:        
         pass
-
-    def preprocess(self, x_input, y_input):
-        lda = LinearDiscriminantAnalysis()
-        
+    
+    def preprocess(self, x_input, y_input, n_pois):
+        lda = LinearDiscriminantAnalysis(n_components=n_pois)
         processed_input = lda.fit_transform(x_input, y_input)
+
         return processed_input, [0,0]
 
 class SOST_Preprocessor:

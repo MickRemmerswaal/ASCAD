@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal
@@ -40,20 +41,40 @@ def get_hamming_weight_att(input, key, byte_idx=0):
     return HW[intermediate_val_att(input, key, byte_idx)]
 
 # POI selection, reducing the dimensionality => increases efficiency and speed
-def POI_selection(type, x_input, y_input, amount_of_values, n_pois=4, variance=0.9):
+def POI_selection(type, x_input, y_input, amount_of_values, n_pois=4):
     if type == "SOST": 
-        preprocessor = prep.SOST_Preprocessor(amount_of_values)
-        return preprocessor.preprocess(x_input, y_input, n_pois)
+        proc = prep.SOST_Preprocessor(amount_of_values)
+        snr = calc_snr(x_input, y_input, amount_of_values)
+        return proc.preprocess(x_input, y_input, n_pois), snr
         
     elif type == "LDA":
-        preprocessor = prep.LDA_Preprocessor()
-        return preprocessor.preprocess(x_input, y_input)
+        proc = prep.LDA_Preprocessor()
+        snr = calc_snr(x_input, y_input, amount_of_values)
+        return proc.preprocess(x_input, y_input, n_pois), snr
 
     elif type == "PCA":
-        preprocessor = prep.PCA_Preprocessor()
-        return preprocessor.preprocess(variance, x_input)
+        proc = prep.PCA_Preprocessor()
+        snr = calc_snr(x_input, y_input, amount_of_values)
+        return proc.preprocess(x_input, n_pois), snr
     else:
         print("Error: please select valid processor(SOST, LDA, PCA)")
+
+# Calculate SNR for each group
+def calc_snr(x_input, y_input, amount_of_values):
+    # Group input based on labels
+    grouped_input = [[] for _ in range(amount_of_values)]
+    for i in range(len(x_input)):
+        grouped_input[y_input[i]].append(x_input[i])
+
+    # Calculate Means and Variance of each group
+    snr_means = [np.array([]) for _ in range(amount_of_values)]
+    snr_var = [np.array([]) for _ in range(amount_of_values)]
+
+    for group in range(amount_of_values):
+        snr_means[group] = np.mean(grouped_input[group], axis=0)
+        snr_var[group] = np.var(grouped_input[group], axis=0)
+
+    return np.divide(np.var(snr_means, axis=0), np.mean(snr_var, axis=0))
 
 def create_templates(temp_input, temp_labels, amount_of_values):
     input_len = len(temp_input)
@@ -145,11 +166,15 @@ if __name__ == "__main__":
     temp_label_int = all_label_int[0:8000]
     temp_label_hw = [HW[a] for a in temp_label_int]
 
-    atk_traces = all_traces[8001:10000]
-    atk_ptext = all_ptext[8001:10000]
+    atk_traces = all_traces[8000:8050]
+    atk_ptext = all_ptext[8000:8050]
 
     # Process input for template creation    
-    processed_input, indices = POI_selection("PCA", temp_traces, temp_label_int, 9)
+    processed_input, indices, snr = POI_selection("PCA", temp_traces, temp_label_hw, 9)
+
+
+    plt.plot(snr)
+    plt.show(block=True)
 
     # Template creation
     template_means, template_covs = create_templates(processed_input, temp_label_hw, 9)
@@ -158,4 +183,4 @@ if __name__ == "__main__":
     # Perform attack #
     ##################
     
-    perform_attack(atk_traces, atk_ptext, indices, template_means, template_covs, 9)
+    perform_attack(atk_traces, atk_ptext, indices, template_means, template_covs, 9, 2)
