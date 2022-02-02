@@ -1,4 +1,4 @@
-import sys
+from concurrent.futures import process
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal
@@ -41,21 +41,47 @@ def get_hamming_weight_att(input, key, byte_idx=0):
     return HW[intermediate_val_att(input, key, byte_idx)]
 
 # POI selection, reducing the dimensionality => increases efficiency and speed
-def POI_selection(type, x_input, y_input, amount_of_values, n_pois=4):
+def POI_selection(type, temp_input, temp_label, atk_input, amount_of_values, n_pois=4):
     if type == "SOST": 
         proc = prep.SOST_Preprocessor(amount_of_values)
-        snr = calc_snr(x_input, y_input, amount_of_values)
-        return proc.preprocess(x_input, y_input, n_pois), snr
+        snr = calc_snr(temp_input, temp_label, amount_of_values)
+        processed_input_temp, indices = proc.preprocess(temp_input, temp_label, n_pois)
+        processed_input_atk = atk_input[:, indices]
+        return processed_input_temp, processed_input_atk , snr
         
     elif type == "LDA":
-        proc = prep.LDA_Preprocessor()
-        snr = calc_snr(x_input, y_input, amount_of_values)
-        return proc.preprocess(x_input, y_input, n_pois), snr
+        proc = prep.LDA_Preprocessor(n_pois)
+        snr = calc_snr(temp_input, temp_label, amount_of_values)
+
+        # Create passable time window for PCA
+        time_window_center = np.argmax(snr)
+        window_begin = (time_window_center - 500) if time_window_center > 500 else 0
+        window_end =  time_window_center + 500
+        window = range(window_begin, window_end)
+        
+        new_temp_input = temp_input[:, window]
+        new_temp_label = temp_label[:, window]
+        new_atk_input = atk_input[:, window]
+
+        processed_input_temp, processed_input_atk = proc.preprocess(new_temp_input, new_temp_label, new_atk_input)
+        return processed_input_temp, processed_input_atk, snr
 
     elif type == "PCA":
-        proc = prep.PCA_Preprocessor()
-        snr = calc_snr(x_input, y_input, amount_of_values)
-        return proc.preprocess(x_input, n_pois), snr
+        proc = prep.PCA_Preprocessor(n_pois)
+        snr = calc_snr(temp_input, temp_label, amount_of_values)
+
+        # Create passable time window for PCA
+        time_window_center = np.argmax(snr)
+        window_begin = (time_window_center - 500) if time_window_center > 500 else 0
+        window_end =  time_window_center + 500
+        window = range(window_begin, window_end)
+
+        new_temp_input = temp_input[:, window]
+        new_atk_input = atk_input[:, window]
+
+        processed_input_temp, processed_input_atk = proc.preprocess(new_temp_input, new_atk_input)
+        return processed_input_temp, processed_input_atk, snr
+
     else:
         print("Error: please select valid processor(SOST, LDA, PCA)")
 
@@ -102,15 +128,14 @@ def create_templates(temp_input, temp_labels, amount_of_values):
 
     return template_means, template_covs
 
-def perform_attack(atk_input, atk_ptext, indices, template_means, template_cov_matrix, amount_of_values, attack_byte=1):    
+def perform_attack(atk_input, atk_ptext, template_means, template_cov_matrix, amount_of_values, attack_byte=1):    
+    guess_agg = [[] for _ in range(len(atk_input))]
+    
     guess_proba = np.zeros(256)
 
     if amount_of_values == 9:
         for i in range(len(atk_input)):
-            if not indices == [0,0]:
-                cur_trace = atk_input[i, indices]
-            else:
-                cur_trace = atk_input[i]
+            cur_trace = atk_input[i]
 
             for key in range(256):
                 hw = get_hamming_weight_att(atk_ptext[i], key, attack_byte)
@@ -119,14 +144,12 @@ def perform_attack(atk_input, atk_ptext, indices, template_means, template_cov_m
                 proba_key_guess = rv.pdf(cur_trace)
                 guess_proba[key] += np.log(proba_key_guess)
 
-            print(np.argsort(guess_proba)[-5:])
+            #print(np.argsort(guess_proba)[-5:])
+            guess_agg[i].append(np.argsort(guess_proba))
 
     elif amount_of_values == 256:
         for i in range(len(atk_input)):
-            if not indices == [0,0]:
-                cur_trace = atk_input[i, indices]
-            else:
-                cur_trace = atk_input[i]
+            cur_trace = atk_input[i]
                 
             for key in range(256):
                 val = intermediate_val_att(atk_ptext[i], key, attack_byte)
@@ -135,7 +158,10 @@ def perform_attack(atk_input, atk_ptext, indices, template_means, template_cov_m
                 proba_key_guess = rv.pdf(cur_trace)
                 guess_proba[key] += np.log(proba_key_guess)
 
-            print(np.argsort(guess_proba)[-5:])
+            #print(np.argsort(guess_proba)[-5:])
+            guess_agg[i].append(np.argsort(guess_proba))
+    
+    return guess_agg
 
 if __name__ == "__main__":
     ####################################
@@ -168,19 +194,27 @@ if __name__ == "__main__":
 
     atk_traces = all_traces[8000:8050]
     atk_ptext = all_ptext[8000:8050]
+    poi_type = "PCA"
+    attack_byte = 1
 
     # Process input for template creation    
-    processed_input, indices, snr = POI_selection("PCA", temp_traces, temp_label_hw, 9)
+    processed_input_temp, processed_input_atk, snr = POI_selection(poi_type, temp_traces, temp_label_hw, atk_traces, 9)
 
-
-    plt.plot(snr)
-    plt.show(block=True)
+    #plt.plot(snr)
+    #plt.show(block=True)
 
     # Template creation
-    template_means, template_covs = create_templates(processed_input, temp_label_hw, 9)
+    template_means, template_covs = create_templates(processed_input_temp, temp_label_hw, 9)
 
     ##################
     # Perform attack #
     ##################
+    guess_agg = perform_attack(processed_input_atk, atk_ptext, template_means, template_covs, 9, attack_byte)
+
+    actual_key_byte = keys[0][attack_byte]
+
+    rankings = np.where(guess_agg==actual_key_byte)[2]
+    rankings = abs(rankings - 255)
     
-    perform_attack(atk_traces, atk_ptext, indices, template_means, template_covs, 9, 2)
+    plt.plot(rankings)
+    plt.show(block=True)

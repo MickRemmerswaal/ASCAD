@@ -9,28 +9,30 @@ class PCA_Preprocessor:
     # A relatively simple PCA preprocessor
     # used to decompose the input into its most prominent features
     
-    def __init__(self) -> None:
+    def __init__(self, n_pois) -> None:
+        self.pca = PCA(n_components=n_pois)
         pass
 
-    def preprocess(self, input, n_pois):
-        pca = PCA(n_components=n_pois)
-        processed_input = pca.fit_transform(input)
+    def preprocess(self, temp_input, atk_input):
+        processed_input_temp = self.pca.fit_transform(temp_input)
+        processed_input_atk = self.pca.transform(atk_input)
 
-        return processed_input, [0,0]
+        return processed_input_temp, processed_input_atk
 
 class LDA_Preprocessor:
     # An LDA preproccessor more sophisticated than PCA
     # Also used to decompose the input to its most prominent features
     # But uses the labels as well instead of only the data
 
-    def __init__(self) -> None:        
+    def __init__(self, n_pois) -> None:
+        self.lda = LinearDiscriminantAnalysis(n_components=n_pois)
         pass
     
-    def preprocess(self, x_input, y_input, n_pois):
-        lda = LinearDiscriminantAnalysis(n_components=n_pois)
-        processed_input = lda.fit_transform(x_input, y_input)
+    def preprocess(self, temp_input, temp_labels, atk_input):
+        processed_input_temp = self.lda.fit_transform(temp_input, temp_labels)
+        processed_input_atk = self.lda.transform(atk_input)
 
-        return processed_input, [0,0]
+        return processed_input_temp, processed_input_atk
 
 class SOST_Preprocessor:
     # Sum Of Squared T-Test preprocessor
