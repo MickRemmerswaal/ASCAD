@@ -3,3 +3,4 @@ STM32_AES_v2
 logs/
 __pycache__/preprocess.cpython-38.pyc
 feature_selection.py
+results/

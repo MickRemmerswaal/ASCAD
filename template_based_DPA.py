@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal
 import h5py as h5
 import preprocess as prep
+from sklearn.model_selection import ParameterGrid
+import csv
 
 # Simple S-Box lookup table
 sbox=(
@@ -41,12 +43,27 @@ def get_hamming_weight_att(input, key, byte_idx=0):
     return HW[intermediate_val_att(input, key, byte_idx)]
 
 # POI selection, reducing the dimensionality => increases efficiency and speed
-def POI_selection(type, temp_input, temp_label, atk_input, amount_of_values, n_pois=4):
+def POI_selection(type, temp_input, temp_label, atk_input, amount_of_values, n_pois=4, poi_spacing=20):
     if type == "SOST": 
-        proc = prep.SOST_Preprocessor(amount_of_values)
+        proc = prep.SOST_Preprocessor(amount_of_values, n_pois, poi_spacing)
         snr = calc_snr(temp_input, temp_label, amount_of_values)
-        processed_input_temp, indices = proc.preprocess(temp_input, temp_label, n_pois)
+        processed_input_temp, indices = proc.preprocess(temp_input, temp_label)
         processed_input_atk = atk_input[:, indices]
+
+
+
+
+        # Displaying POI's 
+        print(indices)
+        _, axs = plt.subplots(2, sharey=False)
+        axs[0].plot(temp_traces[0], '-bo', markevery=indices, markersize=6, markerfacecolor='k')
+        axs[1].plot(snr)
+
+        plt.show(block=True)
+
+
+
+
         return processed_input_temp, processed_input_atk , snr
         
     elif type == "LDA":
@@ -60,10 +77,9 @@ def POI_selection(type, temp_input, temp_label, atk_input, amount_of_values, n_p
         window = range(window_begin, window_end)
         
         new_temp_input = temp_input[:, window]
-        new_temp_label = temp_label[:, window]
         new_atk_input = atk_input[:, window]
 
-        processed_input_temp, processed_input_atk = proc.preprocess(new_temp_input, new_temp_label, new_atk_input)
+        processed_input_temp, processed_input_atk = proc.preprocess(new_temp_input, temp_label, new_atk_input)
         return processed_input_temp, processed_input_atk, snr
 
     elif type == "PCA":
@@ -79,7 +95,7 @@ def POI_selection(type, temp_input, temp_label, atk_input, amount_of_values, n_p
         new_temp_input = temp_input[:, window]
         new_atk_input = atk_input[:, window]
 
-        processed_input_temp, processed_input_atk = proc.preprocess(new_temp_input, new_atk_input)
+        processed_input_temp, processed_input_atk = proc.preprocess(new_temp_input, temp_label, new_atk_input)
         return processed_input_temp, processed_input_atk, snr
 
     else:
@@ -163,6 +179,35 @@ def perform_attack(atk_input, atk_ptext, template_means, template_cov_matrix, am
     
     return guess_agg
 
+def perform_temp_DPA(all_traces, all_ptext, atk_traces, atk_ptext, params, attack_byte):
+    # 1 Assign parameters
+    n_temp_traces = params["n_temp_traces"]
+    poi_type =      params["poi_type"]
+    n_pois =        params["n_pois"]
+    poi_spacing =   params["poi_spacing"]
+
+    # 2 Extract traces and labels
+    temp_traces = all_traces[0:n_temp_traces]
+    all_label_int = [intermediate_val(a, keys[0], attack_byte) for a in all_ptext]
+    temp_label_int = all_label_int[0:n_temp_traces]
+    temp_label_hw = [HW[a] for a in temp_label_int]
+
+    # 3 POI selection with given parameters  
+    processed_input_temp, processed_input_atk, snr = POI_selection(poi_type, temp_traces, temp_label_hw, atk_traces, 9, n_pois, poi_spacing)
+
+    # 4 Template creation
+    template_means, template_covs = create_templates(processed_input_temp, temp_label_hw, 9)
+
+    # 5 Perform actual attack
+    guess_agg = perform_attack(processed_input_atk, atk_ptext, template_means, template_covs, 9, attack_byte)
+
+    actual_key_byte = keys[0][attack_byte]
+
+    rankings = np.where(guess_agg==actual_key_byte)[2]
+    rankings = abs(rankings - 255)
+
+    return rankings
+
 if __name__ == "__main__":
     ####################################
     ### FIXED KEY TEMPLATE BASED DPA ###
@@ -185,6 +230,44 @@ if __name__ == "__main__":
     keys =  [item[2] for item in metadata]
     masks =  [item[3] for item in metadata]
     
+    atk_traces = all_traces[30000:30050]
+    atk_ptext = all_ptext[30000:30050]
+
+    attack_byte = 3
+
+    '''
+    params = [{
+        "poi_spacing":      [20],
+        "n_temp_traces":    [8000],
+        "n_pois":           [2, 4, 10, 20, 50, 100],        
+        "poi_type":         ["SOST"]},
+        {
+        "poi_spacing":      [20],
+        "n_temp_traces":    [8000],
+        "n_pois":           [1, 2, 3, 4, 5, 6, 7, 8],        
+        "poi_type":         ["LDA", "PCA"]
+        }]
+        
+    combinations = list(ParameterGrid(params))
+
+    performances = []
+    for param in combinations:
+        print("DPA attack: " + param["poi_type"] + " with " + str(param["n_pois"]) + " POI's")
+        rankings = perform_temp_DPA(all_traces, all_ptext, atk_traces, atk_ptext, param, attack_byte)
+        
+        performances.append(rankings)
+    print("done")
+
+    csv_file_name = "results_fixed_key_byte"+ str(attack_byte)+".csv"
+    b = open(csv_file_name, 'w')
+    a = csv.writer(b)
+    data = performances
+    a.writerows(data)
+    b.close()
+
+    '''
+
+
     temp_traces = all_traces[0:8000]
     temp_ptext = all_ptext[0:8000]
 
@@ -192,8 +275,6 @@ if __name__ == "__main__":
     temp_label_int = all_label_int[0:8000]
     temp_label_hw = [HW[a] for a in temp_label_int]
 
-    atk_traces = all_traces[8000:8050]
-    atk_ptext = all_ptext[8000:8050]
     poi_type = "PCA"
     attack_byte = 1
 
@@ -218,3 +299,4 @@ if __name__ == "__main__":
     
     plt.plot(rankings)
     plt.show(block=True)
+

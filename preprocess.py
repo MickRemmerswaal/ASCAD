@@ -1,9 +1,9 @@
-from re import template
 import numpy as np
 from numpy.ma.core import count
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from timeit import default_timer as timer
+import matplotlib.pyplot as plt
+
 
 class PCA_Preprocessor:
     # A relatively simple PCA preprocessor
@@ -13,9 +13,30 @@ class PCA_Preprocessor:
         self.pca = PCA(n_components=n_pois)
         pass
 
-    def preprocess(self, temp_input, atk_input):
+    def preprocess(self, temp_input, temp_labels, atk_input):
         processed_input_temp = self.pca.fit_transform(temp_input)
         processed_input_atk = self.pca.transform(atk_input)
+
+        _, axs = plt.subplots(4, 4, sharey=False)
+        axs[0,1].scatter(processed_input_temp[:100,0], processed_input_temp[:100,1], c = temp_labels[:100])
+        axs[0,2].scatter(processed_input_temp[:100,0], processed_input_temp[:100,2], c = temp_labels[:100])
+        axs[0,3].scatter(processed_input_temp[:100,0], processed_input_temp[:100,3], c = temp_labels[:100])
+
+        axs[1,0].scatter(processed_input_temp[:100,1], processed_input_temp[:100,0], c = temp_labels[:100])
+        axs[1,2].scatter(processed_input_temp[:100,1], processed_input_temp[:100,2], c = temp_labels[:100])
+        axs[1,3].scatter(processed_input_temp[:100,1], processed_input_temp[:100,3], c = temp_labels[:100])
+
+        axs[2,0].scatter(processed_input_temp[:100,2], processed_input_temp[:100,0], c = temp_labels[:100])
+        axs[2,1].scatter(processed_input_temp[:100,2], processed_input_temp[:100,1], c = temp_labels[:100])
+        axs[2,3].scatter(processed_input_temp[:100,2], processed_input_temp[:100,3], c = temp_labels[:100])
+
+        axs[3,0].scatter(processed_input_temp[:100,3], processed_input_temp[:100,0], c = temp_labels[:100])
+        axs[3,1].scatter(processed_input_temp[:100,3], processed_input_temp[:100,1], c = temp_labels[:100])
+        axs[3,2].scatter(processed_input_temp[:100,3], processed_input_temp[:100,2], c = temp_labels[:100])
+
+        plt.show(block=True)
+
+
 
         return processed_input_temp, processed_input_atk
 
@@ -37,16 +58,18 @@ class LDA_Preprocessor:
 class SOST_Preprocessor:
     # Sum Of Squared T-Test preprocessor
     # Creates a T-test for each feature to select the most prominent ones
-    def __init__(self, amount_of_values) -> None:
+    def __init__(self, amount_of_values, n_pois, poi_spacing) -> None:
         self.HW = [bin(a).count("1") for a in range(256)]
         self.amount_of_values = amount_of_values
+        self.n_pois = n_pois
+        self.poi_spacing = poi_spacing
         pass
 
-    def preprocess(self, x_input, y_input, n_poi, poi_spacing=20):
+    def preprocess(self, x_input, y_input):
         if self.amount_of_values == 9:
             trace_groups = [[] for _ in range(self.amount_of_values)]      
             for i in range (len(x_input)):
-                hw = self.HW[y_input[i]] 
+                hw = y_input[i]
                 trace_groups[hw].append(x_input[i])
         
         elif self.amount_of_values == 256:
@@ -77,13 +100,13 @@ class SOST_Preprocessor:
         # Select top-n coefficients to represent the POI's,
         # Adhereing to POI spacing to increase efficiency
         sorted =np.argsort(-coefficients)
-        relevant_indices = np.full(n_poi, -1)
+        relevant_indices = np.full(self.n_pois, -1)
         check_idx = 1
 
-        for i in range(n_poi):            
+        for i in range(self.n_pois):            
             if i > 0:           
                 cur_poi = sorted[check_idx]
-                while(not self.dist_to_pois(cur_poi, relevant_indices, poi_spacing)):                    
+                while(not self.dist_to_pois(cur_poi, relevant_indices, self.poi_spacing)):                    
                     check_idx+=1
                     cur_poi = sorted[check_idx]
 
