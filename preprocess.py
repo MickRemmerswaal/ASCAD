@@ -16,7 +16,43 @@ class PCA_Preprocessor:
     def preprocess(self, temp_input, temp_labels, atk_input):
         processed_input_temp = self.pca.fit_transform(temp_input)
         processed_input_atk = self.pca.transform(atk_input)
+        """
+        _, axs = plt.subplots(4, 4, sharey=False)
+        axs[0,1].scatter(processed_input_temp[:100,0], processed_input_temp[:100,1], c = temp_labels[:100])
+        axs[0,2].scatter(processed_input_temp[:100,0], processed_input_temp[:100,2], c = temp_labels[:100])
+        axs[0,3].scatter(processed_input_temp[:100,0], processed_input_temp[:100,3], c = temp_labels[:100])
 
+        axs[1,0].scatter(processed_input_temp[:100,1], processed_input_temp[:100,0], c = temp_labels[:100])
+        axs[1,2].scatter(processed_input_temp[:100,1], processed_input_temp[:100,2], c = temp_labels[:100])
+        axs[1,3].scatter(processed_input_temp[:100,1], processed_input_temp[:100,3], c = temp_labels[:100])
+
+        axs[2,0].scatter(processed_input_temp[:100,2], processed_input_temp[:100,0], c = temp_labels[:100])
+        axs[2,1].scatter(processed_input_temp[:100,2], processed_input_temp[:100,1], c = temp_labels[:100])
+        axs[2,3].scatter(processed_input_temp[:100,2], processed_input_temp[:100,3], c = temp_labels[:100])
+
+        axs[3,0].scatter(processed_input_temp[:100,3], processed_input_temp[:100,0], c = temp_labels[:100])
+        axs[3,1].scatter(processed_input_temp[:100,3], processed_input_temp[:100,1], c = temp_labels[:100])
+        axs[3,2].scatter(processed_input_temp[:100,3], processed_input_temp[:100,2], c = temp_labels[:100])
+
+        plt.show(block=True)
+        """
+
+
+        return processed_input_temp, processed_input_atk
+
+class LDA_Preprocessor:
+    # An LDA preproccessor more sophisticated than PCA
+    # Also used to decompose the input to its most prominent features
+    # But uses the labels as well instead of only the data
+
+    def __init__(self, n_pois) -> None:
+        self.lda = LinearDiscriminantAnalysis(n_components=n_pois)
+        pass
+    
+    def preprocess(self, temp_input, temp_labels, atk_input):
+        processed_input_temp = self.lda.fit_transform(temp_input, temp_labels)
+        processed_input_atk = self.lda.transform(atk_input)
+        '''
         _, axs = plt.subplots(4, 4, sharey=False)
         axs[0,1].scatter(processed_input_temp[:100,0], processed_input_temp[:100,1], c = temp_labels[:100])
         axs[0,2].scatter(processed_input_temp[:100,0], processed_input_temp[:100,2], c = temp_labels[:100])
@@ -36,22 +72,7 @@ class PCA_Preprocessor:
 
         plt.show(block=True)
 
-
-
-        return processed_input_temp, processed_input_atk
-
-class LDA_Preprocessor:
-    # An LDA preproccessor more sophisticated than PCA
-    # Also used to decompose the input to its most prominent features
-    # But uses the labels as well instead of only the data
-
-    def __init__(self, n_pois) -> None:
-        self.lda = LinearDiscriminantAnalysis(n_components=n_pois)
-        pass
-    
-    def preprocess(self, temp_input, temp_labels, atk_input):
-        processed_input_temp = self.lda.fit_transform(temp_input, temp_labels)
-        processed_input_atk = self.lda.transform(atk_input)
+        '''
 
         return processed_input_temp, processed_input_atk
 

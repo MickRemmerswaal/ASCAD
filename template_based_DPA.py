@@ -6,6 +6,7 @@ import h5py as h5
 import preprocess as prep
 from sklearn.model_selection import ParameterGrid
 import csv
+import random
 
 # Simple S-Box lookup table
 sbox=(
@@ -49,20 +50,6 @@ def POI_selection(type, temp_input, temp_label, atk_input, amount_of_values, n_p
         snr = calc_snr(temp_input, temp_label, amount_of_values)
         processed_input_temp, indices = proc.preprocess(temp_input, temp_label)
         processed_input_atk = atk_input[:, indices]
-
-
-
-
-        # Displaying POI's 
-        print(indices)
-        _, axs = plt.subplots(2, sharey=False)
-        axs[0].plot(temp_traces[0], '-bo', markevery=indices, markersize=6, markerfacecolor='k')
-        axs[1].plot(snr)
-
-        plt.show(block=True)
-
-
-
 
         return processed_input_temp, processed_input_atk , snr
         
@@ -179,17 +166,14 @@ def perform_attack(atk_input, atk_ptext, template_means, template_cov_matrix, am
     
     return guess_agg
 
-def perform_temp_DPA(all_traces, all_ptext, atk_traces, atk_ptext, params, attack_byte):
+def perform_temp_DPA(temp_traces, temp_ptext, atk_traces, atk_ptext, params, attack_byte):
     # 1 Assign parameters
-    n_temp_traces = params["n_temp_traces"]
     poi_type =      params["poi_type"]
     n_pois =        params["n_pois"]
     poi_spacing =   params["poi_spacing"]
 
     # 2 Extract traces and labels
-    temp_traces = all_traces[0:n_temp_traces]
-    all_label_int = [intermediate_val(a, keys[0], attack_byte) for a in all_ptext]
-    temp_label_int = all_label_int[0:n_temp_traces]
+    temp_label_int = [intermediate_val(a, keys[0], attack_byte) for a in temp_ptext]
     temp_label_hw = [HW[a] for a in temp_label_int]
 
     # 3 POI selection with given parameters  
@@ -225,39 +209,49 @@ if __name__ == "__main__":
     ##  2 : Key
     ##  3 : Mask
 
-    all_ptext = [item[0] for item in metadata]
-    all_ctext =  [item[1] for item in metadata]
-    keys =  [item[2] for item in metadata]
-    masks =  [item[3] for item in metadata]
-    
-    atk_traces = all_traces[30000:30050]
-    atk_ptext = all_ptext[30000:30050]
+    all_ptext = np.asarray([item[0] for item in metadata])
+    all_ctext =  np.asarray([item[1] for item in metadata])
+    keys =  np.asarray([item[2] for item in metadata])
+    masks =  np.asarray([item[3] for item in metadata])
 
-    attack_byte = 3
 
-    '''
+    # Create template traces selection
+    temp_indices = np.asarray(random.sample(range(all_traces.shape[0]), 10000))
+    temp_indices = np.sort(temp_indices)
+    temp_traces = all_traces[temp_indices]
+    temp_ptext = all_ptext[temp_indices]
+
+    # Create attack traces selection
+    atk_indices = np.asarray(random.sample(range(all_traces.shape[0]), 1000))
+    atk_indices = np.sort(atk_indices)
+    atk_traces = all_traces[atk_indices]
+    atk_ptext = all_ptext[atk_indices]
+
+    # Define Paramter Grid Search
     params = [{
         "poi_spacing":      [20],
-        "n_temp_traces":    [8000],
         "n_pois":           [2, 4, 10, 20, 50, 100],        
         "poi_type":         ["SOST"]},
         {
         "poi_spacing":      [20],
-        "n_temp_traces":    [8000],
         "n_pois":           [1, 2, 3, 4, 5, 6, 7, 8],        
         "poi_type":         ["LDA", "PCA"]
         }]
         
     combinations = list(ParameterGrid(params))
 
-    performances = []
+    performances = []    
+    attack_byte = 5
+
+    # Perform T-DPA on the attack byte with selected parameters
     for param in combinations:
         print("DPA attack: " + param["poi_type"] + " with " + str(param["n_pois"]) + " POI's")
-        rankings = perform_temp_DPA(all_traces, all_ptext, atk_traces, atk_ptext, param, attack_byte)
+        rankings = perform_temp_DPA(temp_traces, temp_ptext, atk_traces, atk_ptext, param, attack_byte)
         
         performances.append(rankings)
     print("done")
 
+    # Save performances in csv file
     csv_file_name = "results_fixed_key_byte"+ str(attack_byte)+".csv"
     b = open(csv_file_name, 'w')
     a = csv.writer(b)
@@ -275,7 +269,7 @@ if __name__ == "__main__":
     temp_label_int = all_label_int[0:8000]
     temp_label_hw = [HW[a] for a in temp_label_int]
 
-    poi_type = "PCA"
+    poi_type = "LDA"
     attack_byte = 1
 
     # Process input for template creation    
@@ -300,3 +294,4 @@ if __name__ == "__main__":
     plt.plot(rankings)
     plt.show(block=True)
 
+'''
