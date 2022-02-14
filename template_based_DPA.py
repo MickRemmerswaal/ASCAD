@@ -241,7 +241,7 @@ if __name__ == "__main__":
     combinations = list(ParameterGrid(params))
 
     performances = []    
-    attack_byte = 5
+    attack_byte = 7
 
     # Perform T-DPA on the attack byte with selected parameters
     for param in combinations:

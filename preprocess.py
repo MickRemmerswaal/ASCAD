@@ -3,7 +3,7 @@ from numpy.ma.core import count
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 import matplotlib.pyplot as plt
-
+import tensorflow as tf
 
 class PCA_Preprocessor:
     # A relatively simple PCA preprocessor
@@ -16,27 +16,6 @@ class PCA_Preprocessor:
     def preprocess(self, temp_input, temp_labels, atk_input):
         processed_input_temp = self.pca.fit_transform(temp_input)
         processed_input_atk = self.pca.transform(atk_input)
-        """
-        _, axs = plt.subplots(4, 4, sharey=False)
-        axs[0,1].scatter(processed_input_temp[:100,0], processed_input_temp[:100,1], c = temp_labels[:100])
-        axs[0,2].scatter(processed_input_temp[:100,0], processed_input_temp[:100,2], c = temp_labels[:100])
-        axs[0,3].scatter(processed_input_temp[:100,0], processed_input_temp[:100,3], c = temp_labels[:100])
-
-        axs[1,0].scatter(processed_input_temp[:100,1], processed_input_temp[:100,0], c = temp_labels[:100])
-        axs[1,2].scatter(processed_input_temp[:100,1], processed_input_temp[:100,2], c = temp_labels[:100])
-        axs[1,3].scatter(processed_input_temp[:100,1], processed_input_temp[:100,3], c = temp_labels[:100])
-
-        axs[2,0].scatter(processed_input_temp[:100,2], processed_input_temp[:100,0], c = temp_labels[:100])
-        axs[2,1].scatter(processed_input_temp[:100,2], processed_input_temp[:100,1], c = temp_labels[:100])
-        axs[2,3].scatter(processed_input_temp[:100,2], processed_input_temp[:100,3], c = temp_labels[:100])
-
-        axs[3,0].scatter(processed_input_temp[:100,3], processed_input_temp[:100,0], c = temp_labels[:100])
-        axs[3,1].scatter(processed_input_temp[:100,3], processed_input_temp[:100,1], c = temp_labels[:100])
-        axs[3,2].scatter(processed_input_temp[:100,3], processed_input_temp[:100,2], c = temp_labels[:100])
-
-        plt.show(block=True)
-        """
-
 
         return processed_input_temp, processed_input_atk
 
@@ -52,27 +31,6 @@ class LDA_Preprocessor:
     def preprocess(self, temp_input, temp_labels, atk_input):
         processed_input_temp = self.lda.fit_transform(temp_input, temp_labels)
         processed_input_atk = self.lda.transform(atk_input)
-        '''
-        _, axs = plt.subplots(4, 4, sharey=False)
-        axs[0,1].scatter(processed_input_temp[:100,0], processed_input_temp[:100,1], c = temp_labels[:100])
-        axs[0,2].scatter(processed_input_temp[:100,0], processed_input_temp[:100,2], c = temp_labels[:100])
-        axs[0,3].scatter(processed_input_temp[:100,0], processed_input_temp[:100,3], c = temp_labels[:100])
-
-        axs[1,0].scatter(processed_input_temp[:100,1], processed_input_temp[:100,0], c = temp_labels[:100])
-        axs[1,2].scatter(processed_input_temp[:100,1], processed_input_temp[:100,2], c = temp_labels[:100])
-        axs[1,3].scatter(processed_input_temp[:100,1], processed_input_temp[:100,3], c = temp_labels[:100])
-
-        axs[2,0].scatter(processed_input_temp[:100,2], processed_input_temp[:100,0], c = temp_labels[:100])
-        axs[2,1].scatter(processed_input_temp[:100,2], processed_input_temp[:100,1], c = temp_labels[:100])
-        axs[2,3].scatter(processed_input_temp[:100,2], processed_input_temp[:100,3], c = temp_labels[:100])
-
-        axs[3,0].scatter(processed_input_temp[:100,3], processed_input_temp[:100,0], c = temp_labels[:100])
-        axs[3,1].scatter(processed_input_temp[:100,3], processed_input_temp[:100,1], c = temp_labels[:100])
-        axs[3,2].scatter(processed_input_temp[:100,3], processed_input_temp[:100,2], c = temp_labels[:100])
-
-        plt.show(block=True)
-
-        '''
 
         return processed_input_temp, processed_input_atk
 
@@ -148,7 +106,54 @@ class SOST_Preprocessor:
 class DL_Preprocessor:
     
     def __init__(self) -> None:
+        self.Encoder = tf.
         pass
     
+
     def preprocess(self, input):
         return input
+
+class Encoder(tf.keras.layers.Layer):
+    def __init__(self, intermediate_dim):
+        super(Encoder, self).__init__()
+        self.hidden_layer = tf.keras.layers.Dense(
+        units=intermediate_dim,
+        activation=tf.nn.relu,
+        kernel_initializer='he_uniform'
+        )
+        self.output_layer = tf.keras.layers.Dense(
+        units=intermediate_dim,
+        activation=tf.nn.sigmoid
+        )
+    
+    def call(self, input_features):
+        activation = self.hidden_layer(input_features)
+        return self.output_layer(activation)
+
+class Decoder(tf.keras.layers.Layer):
+    def __init__(self, intermediate_dim, original_dim):
+        super(Decoder, self).__init__()
+        self.hidden_layer = tf.keras.layers.Dense(
+            units=intermediate_dim,
+            activation=tf.nn.relu,
+            kernel_initializer='he_uniform'
+        )
+        self.output_layer = tf.keras.layers.Dense(
+            units=original_dim,
+            activation=tf.nn.sigmoid
+        )
+
+    def call(self, code):
+        activation = self.hidden_layer(code)
+        return self.output_layer(activation)
+
+class Autoencoder(tf.keras.Model):
+    def __init__(self, intermediate_dim, original_dim):
+        super(Autoencoder, self).__init__()
+        self.encoder = Encoder(intermediate_dim=intermediate_dim)
+        self.decoder = Decoder(intermediate_dim=intermediate_dim, original_dim=original_dim)
+
+    def call(self, input_features):
+        code = self.encoder(input_features)
+        reconstructed = self.decoder(code)
+        return reconstructed
