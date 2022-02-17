@@ -1,6 +1,10 @@
+from tensorflow.keras.layers import *
+from tensorflow.keras.models import *
+from tensorflow.keras import backend as K
+from tensorflow.keras.optimizers import *
+from tensorflow.keras import backend as K
 import tensorflow as tf
 import h5py as h5
-from tensorflow import losses
 import numpy as np
 import random
 
@@ -60,71 +64,78 @@ def calc_snr(x_input, y_input, amount_of_values):
 ############################
 ### Creating Autoencoder ###
 ############################
-class ConvLayer(tf.keras.layers.Layer):
-    def __init__(self, n_filters, kernel, activation):
-        super(ConvLayer, self).__init__()
-        self.n_filters = n_filters
-        self.kernel = kernel
-        self.activation = activation
+def conv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
+  y = Conv1D(filter_num, window_size, padding='same')(x)
+  y = BatchNormalization()(y)
+  y = Activation(act)(y)
+  if max_pool > 0:
+    y = MaxPooling1D(max_pool)(y)
+  if dp_rate > 0:
+    y = Dropout(dp_rate)(y)
+  return y
 
-    def build(self, input_shape):
-        self.layer1 = tf.keras.layers.Conv1D(input_shape=input_shape,filters=self.n_filters, kernel_size=self.kernel)
-        self.layer2 = tf.keras.layers.BatchNormalization()
-        self.layer3 = tf.keras.layers.Activation(self.activation)
+def Conv1DTranspose(input_tensor, filters, kernel_size, padding='same'):
+    x = Lambda(lambda x: K.expand_dims(x, axis=2))(input_tensor)
+    x = Conv2DTranspose(filters=filters, kernel_size=(kernel_size, 1), padding=padding)(x)
+    x = Lambda(lambda x: K.squeeze(x, axis=2))(x)
+    return x
 
-    def call(self, inputs):
-        x = self.layer1(inputs)
-        x = self.layer2(x)
-        return self.layer3(x)
+def deconv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
+  if max_pool > 0:
+    y = UpSampling1D(max_pool)(x)
+  else:
+    y = x
+  y = Conv1DTranspose(y, filter_num, window_size)
+  y = BatchNormalization()(y)
+  y = Activation(act)(y)
 
-class DeCovLayer(tf.keras.layers.Layer):
-    def __init__(self, n_filters, kernel, activation):
-        super(DeCovLayer, self).__init__()
-        self.n_filters = n_filters
-        self.kernel = kernel
-        self.activation = activation
+  if dp_rate > 0:
+    y = Dropout(dp_rate)(y)
+  return y
 
-    def build(self, input_shape):
-        self.layer1 = tf.keras.Lambda(lambda x: tf.keras.backend.expend_dims(x, axis=2))
-        self.layer2 = tf.keras.layers.Conv2DTranspose(input_shape=input_shape,filters=self.n_filters, kernel_size=self.kernel)
-        self.layer3 = tf.keras.Lambda(lambda x: tf.keras.backend.squeeze(x, axis=2))        
-        self.layer4 = tf.keras.layers.BatchNormalization()
-        self.layer5 = tf.keras.layers.Activation(self.activation)
+def cnn_ae(input_length):
+    img_input = Input(shape=(input_length, 1))
+    #encoder
+    x = conv(img_input, 128, 2, 'selu', 0)
+    x = conv(x, 128, 2, 'selu', 0)
+    x = conv(x, 128, 2, 'selu', 0)
+    x = conv(x, 128, 2, 'selu', 5)
+    x = conv(x, 64, 2, 'selu', 0)
+    x = conv(x, 64, 2, 'selu', 0)
+    x = conv(x, 64, 2, 'selu', 0)
+    x = conv(x, 64, 2, 'selu', 2)
+    x = conv(x, 32, 2, 'selu', 0)
+    x = conv(x, 32, 2, 'selu', 0)
+    x = conv(x, 32, 2, 'selu', 0)
+    x = conv(x, 32, 2, 'selu', 2)
+    x = Flatten(name='flatten')(x)
 
-    def call(self, inputs):
-        x = self.layer1(inputs)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        return self.layer5(x)
+    # Actual latent space
+    x = Dense(50, activation='selu')(x)
 
-def create_model(input_shape):
 
-    model = tf.keras.Sequential()
-    model.add(ConvLayer(256, 2, 'selu'))
-    model.add(ConvLayer(256, 2, 'selu'))
-    model.add(ConvLayer(256, 2, 'selu'))
-    model.add(ConvLayer(256, 2, 'selu'))
-    model.add(ConvLayer(256, 2, 'selu'))
-    model.add(ConvLayer(256, 2, 'selu'))
-    model.add(tf.keras.layers.MaxPool1D(5))
-    model.add(ConvLayer(128, 2, 'selu'))
-    model.add(ConvLayer(128, 2, 'selu'))
-    model.add(ConvLayer(128, 2, 'selu'))
-    model.add(ConvLayer(128, 2, 'selu'))
-    model.add(ConvLayer(128, 2, 'selu'))
-    model.add(tf.keras.layers.MaxPool1D(2))
-    model.add(ConvLayer(64, 2, 'selu'))
-    model.add(ConvLayer(64, 2, 'selu'))
-    model.add(ConvLayer(64, 2, 'selu'))
-    model.add(ConvLayer(64, 2, 'selu'))
-    model.add(tf.keras.layers.MaxPool1D(2))
+    x = Dense(1600, activation='selu')(x)
+    x = Reshape((50, 32))(x)
+    x = deconv(x, 32, 2, 'selu', 2)
+    x = deconv(x, 32, 2, 'selu', 0)
+    x = deconv(x, 32, 2, 'selu', 0)
+    x = deconv(x, 32, 2, 'selu', 0)
+    x = deconv(x, 64, 2, 'selu', 2)
+    x = deconv(x, 64, 2, 'selu', 0)
+    x = deconv(x, 64, 2, 'selu', 0)
+    x = deconv(x, 64, 2, 'selu', 0)
+    x = deconv(x, 128, 2, 'selu', 5)
+    x = deconv(x, 128, 2, 'selu', 0)
+    x = deconv(x, 128, 2, 'selu', 0)
+    x = deconv(x, 128, 2, 'selu', 0)
+    
+    x = deconv(x, 1, 2, 'sigmoid', 0)
 
-    model.add(tf.keras.layers.Flatten())
-    model.add(tf.keras.layers.Dense(512, activation='selu'))
-    model.add(tf.keras.layers.Dens(2240, activation='selu'))
-
+    model = Model(img_input, x)
+    model.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
+    model.summary()
     return model
+  
 # Load in data
 file = h5.File('ATMEGA_AES_v1\ATM_AES_v1_fixed_key\ASCAD_data\ASCAD_databases\ATMega8515_raw_traces.h5', 'r')
 
@@ -168,16 +179,23 @@ temp_traces = np.asarray(temp_traces[:, snr_indices])
 atk_traces = np.asarray(atk_traces[:, snr_indices])
 temp_traces = temp_traces.astype('float32')
 atk_traces = atk_traces.astype('float32')
+
+max_val = np.max(temp_traces)
+temp_traces = np.divide(temp_traces, max_val)
+
+max_val = np.max(atk_traces)
+atk_traces = np.divide(atk_traces, max_val)
+
 temp_traces = np.expand_dims(temp_traces, axis=2)
 atk_traces = np.expand_dims(atk_traces, axis=2)
 
 # Create Autoencoder
-autoencoder = create_model(temp_traces.shape)
+with tf.device('/GPU:0'):
+    autoencoder = cnn_ae(temp_traces.shape[1])
 
-# Fit & validate Autoencoder
-autoencoder.compile(optimizer='adam', loss=losses.MeanSquaredError())
-autoencoder.fit(temp_traces, temp_traces,
-                epochs=25,
-                shuffle=True,
-                validation_data=(atk_traces, atk_traces))
+    # Fit & validate Autoencoder
+    autoencoder.fit(temp_traces, temp_traces,
+                    epochs=25,
+                    shuffle=True,
+                    validation_data=(atk_traces, atk_traces))
 
