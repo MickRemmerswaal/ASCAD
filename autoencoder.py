@@ -1,3 +1,4 @@
+from distutils.command.build_scripts import first_line_re
 from tensorflow.keras.layers import *
 from tensorflow.keras.models import *
 from tensorflow.keras import backend as K
@@ -64,6 +65,25 @@ def calc_snr(x_input, y_input, amount_of_values):
 ############################
 ### Creating Autoencoder ###
 ############################
+class ConvLayer(Layer):
+  def __init__(self, filter, kernel, act):
+    super(ConvLayer, self).__init__()
+
+    self.filter = filter
+    self.kernel = kernel
+    self.act = act
+    
+  
+  def build(self, input_shape):
+      self.conv = Conv1D(self.filter, self.kernel, padding='same')
+      self.norm = BatchNormalization()
+      self.acti = Activation(self.act)
+  
+  def call(self, inputs):
+      x = self.conv(inputs)
+      x = self.norm(x)
+      return self.acti(x)
+
 def conv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
   y = Conv1D(filter_num, window_size, padding='same')(x)
   y = BatchNormalization()(y)
@@ -74,11 +94,46 @@ def conv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
     y = Dropout(dp_rate)(y)
   return y
 
+class Conv1DTranspose(Layer):
+  def __init__(self,  filter, kernel):
+    super().__init__()
+    self.filter = filter
+    self.kernel = kernel
+  
+  def build(self, input_shape):
+    self.first  = Lambda(lambda x: K.expand_dims(x, axis=2))
+    self.conv   = Conv2DTranspose(self.filter, (self.kernel, 1), padding='same')
+    self.second = Lambda(lambda x: K.squeeze(x, axis=2))
+
+  def call(self, inputs):
+    x = self.first(inputs)
+    x = self.conv(x)
+    return self.second(x)
+
 def Conv1DTranspose(input_tensor, filters, kernel_size, padding='same'):
     x = Lambda(lambda x: K.expand_dims(x, axis=2))(input_tensor)
     x = Conv2DTranspose(filters=filters, kernel_size=(kernel_size, 1), padding=padding)(x)
     x = Lambda(lambda x: K.squeeze(x, axis=2))(x)
     return x
+
+class DeconvLayer(Layer):
+  def __init__(self, filter, kernel, act):
+      super(DeconvLayer, self).__init__()
+
+      self.filter = filter
+      self.kernel = kernel
+      self.act = act
+
+
+  def build(self, input_shape):
+    self.conv = Conv1DTranspose(self.filter, self.kernel)
+    self.norm = BatchNormalization()
+    self.acti = Activation(self.act)
+
+  def call(self, inputs):
+    x = self.conv(inputs)
+    x = self.norm(x)
+    return self.acti(x)
 
 def deconv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
   if max_pool > 0:
@@ -93,9 +148,62 @@ def deconv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
     y = Dropout(dp_rate)(y)
   return y
 
+class AutoEncoder(Model):
+  def __init__(self, latent_dim):
+    super(AutoEncoder, self).__init__()
+    self.latent_dim = latent_dim
+
+  def build(self):
+    self.encoder = Sequential([
+      ConvLayer(128, 2, 'selu'),
+      ConvLayer(128, 2, 'selu'),
+      ConvLayer(128, 2, 'selu'),
+      ConvLayer(128, 2, 'selu'),
+      MaxPooling1D(5),
+      ConvLayer(64, 2, 'selu'),
+      ConvLayer(64, 2, 'selu'),
+      ConvLayer(64, 2, 'selu'),
+      ConvLayer(64, 2, 'selu'),
+      MaxPooling1D(2),
+      ConvLayer(32, 2, 'selu'),
+      ConvLayer(32, 2, 'selu'),
+      ConvLayer(32, 2, 'selu'),
+      ConvLayer(32, 2, 'selu'),
+      MaxPooling1D(2),
+      Flatten(),
+      Dense(self.latent_dim, activation='selu')
+    ], name='Encoder') 
+
+    self.decoder = Sequential([
+      Dense((self.latent_dim * 32), activation='selu'),
+      Reshape((50, 32)),
+      UpSampling1D(2),
+      DeconvLayer(32, 2, 'selu'),
+      DeconvLayer(32, 2, 'selu'),
+      DeconvLayer(32, 2, 'selu'),
+      DeconvLayer(32, 2, 'selu'),
+      UpSampling1D(2),
+      DeconvLayer(64, 2, 'selu'),
+      DeconvLayer(64, 2, 'selu'),
+      DeconvLayer(64, 2, 'selu'),
+      DeconvLayer(64, 2, 'selu'),
+      UpSampling1D(5),
+      DeconvLayer(128, 2, 'selu'),
+      DeconvLayer(128, 2, 'selu'),
+      DeconvLayer(128, 2, 'selu'),
+      DeconvLayer(128, 2, 'selu'),
+      DeconvLayer(1, 2, 'sigmoid')
+    ], name='Decoder')
+
+  def call(self, inputs):
+    x = Input(inputs, shape=(inputs.shape[1], 1))
+    x = self.encoder(x)
+    return self.decoder(x)
+
 def cnn_ae(input_length):
     img_input = Input(shape=(input_length, 1))
-    #encoder
+
+    # Encoder
     x = conv(img_input, 128, 2, 'selu', 0)
     x = conv(x, 128, 2, 'selu', 0)
     x = conv(x, 128, 2, 'selu', 0)
@@ -113,7 +221,7 @@ def cnn_ae(input_length):
     # Actual latent space
     x = Dense(50, activation='selu')(x)
 
-
+    # Decoder
     x = Dense(1600, activation='selu')(x)
     x = Reshape((50, 32))(x)
     x = deconv(x, 32, 2, 'selu', 2)
@@ -191,8 +299,10 @@ atk_traces = np.expand_dims(atk_traces, axis=2)
 
 # Create Autoencoder
 with tf.device('/GPU:0'):
-    autoencoder = cnn_ae(temp_traces.shape[1])
-
+    #autoencoder = cnn_ae(temp_traces.shape[1])
+    autoencoder = AutoEncoder(50)
+    autoencoder.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
+    autoencoder.summary()
     # Fit & validate Autoencoder
     autoencoder.fit(temp_traces, temp_traces,
                     epochs=25,
