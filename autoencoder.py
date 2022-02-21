@@ -94,7 +94,7 @@ def conv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
     y = Dropout(dp_rate)(y)
   return y
 
-class Conv1DTranspose(Layer):
+class _Conv1DTranspose(Layer):
   def __init__(self,  filter, kernel):
     super().__init__()
     self.filter = filter
@@ -126,7 +126,7 @@ class DeconvLayer(Layer):
 
 
   def build(self, input_shape):
-    self.conv = Conv1DTranspose(self.filter, self.kernel)
+    self.conv = _Conv1DTranspose(self.filter, self.kernel)
     self.norm = BatchNormalization()
     self.acti = Activation(self.act)
 
@@ -147,58 +147,6 @@ def deconv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
   if dp_rate > 0:
     y = Dropout(dp_rate)(y)
   return y
-
-class AutoEncoder(Model):
-  def __init__(self, latent_dim):
-    super(AutoEncoder, self).__init__()
-    self.latent_dim = latent_dim
-
-  def build(self):
-    self.encoder = Sequential([
-      ConvLayer(128, 2, 'selu'),
-      ConvLayer(128, 2, 'selu'),
-      ConvLayer(128, 2, 'selu'),
-      ConvLayer(128, 2, 'selu'),
-      MaxPooling1D(5),
-      ConvLayer(64, 2, 'selu'),
-      ConvLayer(64, 2, 'selu'),
-      ConvLayer(64, 2, 'selu'),
-      ConvLayer(64, 2, 'selu'),
-      MaxPooling1D(2),
-      ConvLayer(32, 2, 'selu'),
-      ConvLayer(32, 2, 'selu'),
-      ConvLayer(32, 2, 'selu'),
-      ConvLayer(32, 2, 'selu'),
-      MaxPooling1D(2),
-      Flatten(),
-      Dense(self.latent_dim, activation='selu')
-    ], name='Encoder') 
-
-    self.decoder = Sequential([
-      Dense((self.latent_dim * 32), activation='selu'),
-      Reshape((50, 32)),
-      UpSampling1D(2),
-      DeconvLayer(32, 2, 'selu'),
-      DeconvLayer(32, 2, 'selu'),
-      DeconvLayer(32, 2, 'selu'),
-      DeconvLayer(32, 2, 'selu'),
-      UpSampling1D(2),
-      DeconvLayer(64, 2, 'selu'),
-      DeconvLayer(64, 2, 'selu'),
-      DeconvLayer(64, 2, 'selu'),
-      DeconvLayer(64, 2, 'selu'),
-      UpSampling1D(5),
-      DeconvLayer(128, 2, 'selu'),
-      DeconvLayer(128, 2, 'selu'),
-      DeconvLayer(128, 2, 'selu'),
-      DeconvLayer(128, 2, 'selu'),
-      DeconvLayer(1, 2, 'sigmoid')
-    ], name='Decoder')
-
-  def call(self, inputs):
-    x = Input(inputs, shape=(inputs.shape[1], 1))
-    x = self.encoder(x)
-    return self.decoder(x)
 
 def cnn_ae(input_length):
     img_input = Input(shape=(input_length, 1))
@@ -243,12 +191,56 @@ def cnn_ae(input_length):
     model.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
     model.summary()
     return model
-  
+
 # Load in data
 file = h5.File('ATMEGA_AES_v1\ATM_AES_v1_fixed_key\ASCAD_data\ASCAD_databases\ATMega8515_raw_traces.h5', 'r')
 
 all_traces = file['traces']
 metadata = file['metadata']
+
+latent_dim = 50
+
+encoder = Sequential([
+  ConvLayer(128, 2, 'selu'),
+  ConvLayer(128, 2, 'selu'),
+  ConvLayer(128, 2, 'selu'),
+  ConvLayer(128, 2, 'selu'),
+  MaxPooling1D(5),
+  ConvLayer(64, 2, 'selu'),
+  ConvLayer(64, 2, 'selu'),
+  ConvLayer(64, 2, 'selu'),
+  ConvLayer(64, 2, 'selu'),
+  MaxPooling1D(2),
+  ConvLayer(32, 2, 'selu'),
+  ConvLayer(32, 2, 'selu'),
+  ConvLayer(32, 2, 'selu'),
+  ConvLayer(32, 2, 'selu'),
+  MaxPooling1D(2),
+  Flatten(),
+  Dense(latent_dim, activation='selu')
+], name='Encoder') 
+
+decoder = Sequential([
+  Dense((latent_dim * 32), activation='selu'),
+  Reshape((50, 32)),
+  UpSampling1D(2),
+  DeconvLayer(32, 2, 'selu'),
+  DeconvLayer(32, 2, 'selu'),
+  DeconvLayer(32, 2, 'selu'),
+  DeconvLayer(32, 2, 'selu'),
+  UpSampling1D(2),
+  DeconvLayer(64, 2, 'selu'),
+  DeconvLayer(64, 2, 'selu'),
+  DeconvLayer(64, 2, 'selu'),
+  DeconvLayer(64, 2, 'selu'),
+  UpSampling1D(5),
+  DeconvLayer(128, 2, 'selu'),
+  DeconvLayer(128, 2, 'selu'),
+  DeconvLayer(128, 2, 'selu'),
+  DeconvLayer(128, 2, 'selu'),
+  DeconvLayer(1, 2, 'sigmoid')
+], name='Decoder')
+
 
 ## Metadata is build of four components
 ##  0 : Plain_text
@@ -300,12 +292,15 @@ atk_traces = np.expand_dims(atk_traces, axis=2)
 # Create Autoencoder
 with tf.device('/GPU:0'):
     #autoencoder = cnn_ae(temp_traces.shape[1])
-    autoencoder = AutoEncoder(50)
+    autoencoder = Sequential([encoder, decoder])
     autoencoder.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
-    autoencoder.summary()
     # Fit & validate Autoencoder
     autoencoder.fit(temp_traces, temp_traces,
-                    epochs=25,
+                    epochs=1,
                     shuffle=True,
                     validation_data=(atk_traces, atk_traces))
 
+    autoencoder.summary()
+    
+atk_reduced = encoder.predict(atk_traces)
+print(atk_reduced[0])
