@@ -4,6 +4,7 @@ from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 import matplotlib.pyplot as plt
 import tensorflow as tf
+from autoencoder import _Conv1DTranspose, ConvLayer, DeconvLayer
 
 class PCA_Preprocessor:
     # A relatively simple PCA preprocessor
@@ -105,8 +106,12 @@ class SOST_Preprocessor:
 
 class DL_Preprocessor:
     
-    def __init__(self, latent_dim, orig_dim) -> None:
-        self.Autoencoder = Autoencoder(latent_dim, orig_dim)    
+    def __init__(self, model_path) -> None:
+        self.Encoder = tf.keras.models.load_model(model_path, custom_objects={'_Conv1DTranspose': _Conv1DTranspose,
+                                                                              'ConvLayer'       : ConvLayer,
+                                                                              'DeconvLayer'     : DeconvLayer})
 
-    def preprocess(self, input):
-        return self.Autoencoder.call(input)
+    def preprocess(self, temp_input, atk_input):
+        temp_out = self.Encoder.predict(temp_input)
+        atk_out  = self.Encoder.predict(atk_input)
+        return temp_out, atk_out

@@ -1,4 +1,5 @@
 from distutils.command.build_scripts import first_line_re
+from pprint import pp
 from tensorflow.keras.layers import *
 from tensorflow.keras.models import *
 from tensorflow.keras import backend as K
@@ -61,246 +62,255 @@ def calc_snr(x_input, y_input, amount_of_values):
 
     return np.divide(np.var(snr_means, axis=0), np.mean(snr_var, axis=0))
 
-
 ############################
 ### Creating Autoencoder ###
 ############################
 class ConvLayer(Layer):
-  def __init__(self, filter, kernel, act):
-    super(ConvLayer, self).__init__()
-
+  def __init__(self, filter, kernel, act, **kwargs):
+    super().__init__()
     self.filter = filter
     self.kernel = kernel
     self.act = act
-    
+    super(ConvLayer, self).__init__(**kwargs)    
   
   def build(self, input_shape):
       self.conv = Conv1D(self.filter, self.kernel, padding='same')
       self.norm = BatchNormalization()
       self.acti = Activation(self.act)
   
-  def call(self, inputs):
-      x = self.conv(inputs)
-      x = self.norm(x)
-      return self.acti(x)
+  def get_config(self):
+    config = super(ConvLayer, self).get_config()
+    config.update({
+        "filter": self.filter,
+        "kernel": self.kernel,
+        "act"   : self.act
+    })
+    return config
 
-def conv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
-  y = Conv1D(filter_num, window_size, padding='same')(x)
-  y = BatchNormalization()(y)
-  y = Activation(act)(y)
-  if max_pool > 0:
-    y = MaxPooling1D(max_pool)(y)
-  if dp_rate > 0:
-    y = Dropout(dp_rate)(y)
-  return y
-
-class _Conv1DTranspose(Layer):
-  def __init__(self,  filter, kernel):
-    super().__init__()
-    self.filter = filter
-    self.kernel = kernel
-  
-  def build(self, input_shape):
-    self.first  = Lambda(lambda x: K.expand_dims(x, axis=2))
-    self.conv   = Conv2DTranspose(self.filter, (self.kernel, 1), padding='same')
-    self.second = Lambda(lambda x: K.squeeze(x, axis=2))
-
-  def call(self, inputs):
-    x = self.first(inputs)
-    x = self.conv(x)
-    return self.second(x)
-
-def Conv1DTranspose(input_tensor, filters, kernel_size, padding='same'):
-    x = Lambda(lambda x: K.expand_dims(x, axis=2))(input_tensor)
-    x = Conv2DTranspose(filters=filters, kernel_size=(kernel_size, 1), padding=padding)(x)
-    x = Lambda(lambda x: K.squeeze(x, axis=2))(x)
-    return x
-
-class DeconvLayer(Layer):
-  def __init__(self, filter, kernel, act):
-      super(DeconvLayer, self).__init__()
-
-      self.filter = filter
-      self.kernel = kernel
-      self.act = act
-
-
-  def build(self, input_shape):
-    self.conv = _Conv1DTranspose(self.filter, self.kernel)
-    self.norm = BatchNormalization()
-    self.acti = Activation(self.act)
 
   def call(self, inputs):
     x = self.conv(inputs)
     x = self.norm(x)
     return self.acti(x)
 
-def deconv(x, filter_num, window_size, act, max_pool, dp_rate = 0):
-  if max_pool > 0:
-    y = UpSampling1D(max_pool)(x)
-  else:
-    y = x
-  y = Conv1DTranspose(y, filter_num, window_size)
-  y = BatchNormalization()(y)
-  y = Activation(act)(y)
+class Conv2Layer(Layer):
+  def __init__(self, filter, kernel, act, **kwargs):
+    super().__init__()
+    self.filter = filter
+    self.kernel = kernel
+    self.act = act
+    super(Conv2Layer, self).__init__(**kwargs)    
+  
+  def build(self, input_shape):
+      self.conv1 = Conv1D(self.filter, self.kernel, padding='same')
+      self.conv2 = Conv1D(self.filter, self.kernel, padding='same')
+      self.norm = BatchNormalization()
+      self.acti = Activation(self.act)
 
-  if dp_rate > 0:
-    y = Dropout(dp_rate)(y)
-  return y
-
-def cnn_ae(input_length):
-    img_input = Input(shape=(input_length, 1))
-
-    # Encoder
-    x = conv(img_input, 128, 2, 'selu', 0)
-    x = conv(x, 128, 2, 'selu', 0)
-    x = conv(x, 128, 2, 'selu', 0)
-    x = conv(x, 128, 2, 'selu', 5)
-    x = conv(x, 64, 2, 'selu', 0)
-    x = conv(x, 64, 2, 'selu', 0)
-    x = conv(x, 64, 2, 'selu', 0)
-    x = conv(x, 64, 2, 'selu', 2)
-    x = conv(x, 32, 2, 'selu', 0)
-    x = conv(x, 32, 2, 'selu', 0)
-    x = conv(x, 32, 2, 'selu', 0)
-    x = conv(x, 32, 2, 'selu', 2)
-    x = Flatten(name='flatten')(x)
-
-    # Actual latent space
-    x = Dense(50, activation='selu')(x)
-
-    # Decoder
-    x = Dense(1600, activation='selu')(x)
-    x = Reshape((50, 32))(x)
-    x = deconv(x, 32, 2, 'selu', 2)
-    x = deconv(x, 32, 2, 'selu', 0)
-    x = deconv(x, 32, 2, 'selu', 0)
-    x = deconv(x, 32, 2, 'selu', 0)
-    x = deconv(x, 64, 2, 'selu', 2)
-    x = deconv(x, 64, 2, 'selu', 0)
-    x = deconv(x, 64, 2, 'selu', 0)
-    x = deconv(x, 64, 2, 'selu', 0)
-    x = deconv(x, 128, 2, 'selu', 5)
-    x = deconv(x, 128, 2, 'selu', 0)
-    x = deconv(x, 128, 2, 'selu', 0)
-    x = deconv(x, 128, 2, 'selu', 0)
-    
-    x = deconv(x, 1, 2, 'sigmoid', 0)
-
-    model = Model(img_input, x)
-    model.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
-    model.summary()
-    return model
-
-# Load in data
-file = h5.File('ATMEGA_AES_v1\ATM_AES_v1_fixed_key\ASCAD_data\ASCAD_databases\ATMega8515_raw_traces.h5', 'r')
-
-all_traces = file['traces']
-metadata = file['metadata']
-
-latent_dim = 50
-
-encoder = Sequential([
-  ConvLayer(128, 2, 'selu'),
-  ConvLayer(128, 2, 'selu'),
-  ConvLayer(128, 2, 'selu'),
-  ConvLayer(128, 2, 'selu'),
-  MaxPooling1D(5),
-  ConvLayer(64, 2, 'selu'),
-  ConvLayer(64, 2, 'selu'),
-  ConvLayer(64, 2, 'selu'),
-  ConvLayer(64, 2, 'selu'),
-  MaxPooling1D(2),
-  ConvLayer(32, 2, 'selu'),
-  ConvLayer(32, 2, 'selu'),
-  ConvLayer(32, 2, 'selu'),
-  ConvLayer(32, 2, 'selu'),
-  MaxPooling1D(2),
-  Flatten(),
-  Dense(latent_dim, activation='selu')
-], name='Encoder') 
-
-decoder = Sequential([
-  Dense((latent_dim * 32), activation='selu'),
-  Reshape((50, 32)),
-  UpSampling1D(2),
-  DeconvLayer(32, 2, 'selu'),
-  DeconvLayer(32, 2, 'selu'),
-  DeconvLayer(32, 2, 'selu'),
-  DeconvLayer(32, 2, 'selu'),
-  UpSampling1D(2),
-  DeconvLayer(64, 2, 'selu'),
-  DeconvLayer(64, 2, 'selu'),
-  DeconvLayer(64, 2, 'selu'),
-  DeconvLayer(64, 2, 'selu'),
-  UpSampling1D(5),
-  DeconvLayer(128, 2, 'selu'),
-  DeconvLayer(128, 2, 'selu'),
-  DeconvLayer(128, 2, 'selu'),
-  DeconvLayer(128, 2, 'selu'),
-  DeconvLayer(1, 2, 'sigmoid')
-], name='Decoder')
+  def get_config(self):
+    config = super(Conv2Layer, self).get_config()
+    config.update({
+        "filter": self.filter,
+        "kernel": self.kernel,
+        "act"   : self.act
+    })
+    return config
 
 
-## Metadata is build of four components
-##  0 : Plain_text
-##  1 : Cipher_text
-##  2 : Key
-##  3 : Mask
+  def call(self, inputs):
+      x = self.conv1(inputs)
+      x = self.conv2(x)
+      x = self.norm(x)
+      return self.acti(x)
 
-all_ptext = np.asarray([item[0] for item in metadata])
-all_ctext =  np.asarray([item[1] for item in metadata])
-keys =  np.asarray([item[2] for item in metadata])
-masks =  np.asarray([item[3] for item in metadata])
+class _Conv1DTranspose(Layer):
+  def __init__(self,  filter, kernel, **kwargs):
+    super().__init__()
+    self.filter = filter
+    self.kernel = kernel
+    super(_Conv1DTranspose, self).__init__(**kwargs)
 
-# Create template traces selection
-temp_indices = np.asarray(random.sample(range(all_traces.shape[0]), 10000))
-temp_indices = np.sort(temp_indices)
-temp_traces = all_traces[temp_indices]
-temp_ptext = all_ptext[temp_indices]
+  def build(self, input_shape):
+    self.first  = Lambda(lambda x: K.expand_dims(x, axis=2))
+    self.conv   = Conv2DTranspose(self.filter, (self.kernel, 1), padding='same')
+    self.second = Lambda(lambda x: K.squeeze(x, axis=2))
+  
+  def get_config(self):
+    config = super(_Conv1DTranspose, self).get_config()
+    config.update({
+        "filter": self.filter,
+        "kernel": self.kernel
+    })
+    return config
 
-# Create attack traces selection
-atk_indices = np.asarray(random.sample(range(all_traces.shape[0]), 1000))
-atk_indices = np.sort(atk_indices)
-atk_traces = all_traces[atk_indices]
+  def call(self, inputs):
+    x = self.first(inputs)
+    x = self.conv(x)
+    return self.second(x)
 
-# Create labels for SNR calculation
-temp_label_int = [intermediate_val(a, keys[0], 5) for a in temp_ptext]
-temp_label_hw = [HW[a] for a in temp_label_int]
+class DeconvLayer(Layer):
+  def __init__(self, filter, kernel, act, **kwargs):
+      super().__init__()
 
-# Calculate SNR & Select relevant input window
-snr_values = calc_snr(temp_traces, temp_label_hw, 9)
-indices_center = np.argmax(snr_values)
-indices_begin = (indices_center - 500) if indices_center > 500 else 0
-indices_end =  indices_center + 500
-snr_indices = range(indices_begin, indices_end)
+      self.filter = filter
+      self.kernel = kernel
+      self.act = act
 
-temp_traces = np.asarray(temp_traces[:, snr_indices])
-atk_traces = np.asarray(atk_traces[:, snr_indices])
-temp_traces = temp_traces.astype('float32')
-atk_traces = atk_traces.astype('float32')
+      super(DeconvLayer, self).__init__(**kwargs)
 
-max_val = np.max(temp_traces)
-temp_traces = np.divide(temp_traces, max_val)
+  def build(self, input_shape):
+    self.conv = _Conv1DTranspose(self.filter, self.kernel)
+    self.norm = BatchNormalization()
+    self.acti = Activation(self.act)
 
-max_val = np.max(atk_traces)
-atk_traces = np.divide(atk_traces, max_val)
+  def get_config(self):
+      config = super(DeconvLayer, self).get_config()
+      config.update({
+          "filter": self.filter,
+          "kernel": self.kernel,
+          "act"   : self.act
+      })
+      return config
 
-temp_traces = np.expand_dims(temp_traces, axis=2)
-atk_traces = np.expand_dims(atk_traces, axis=2)
+  def call(self, inputs):
+    x = self.conv(inputs)
+    x = self.norm(x)
+    return self.acti(x)
 
-# Create Autoencoder
-with tf.device('/GPU:0'):
-    #autoencoder = cnn_ae(temp_traces.shape[1])
-    autoencoder = Sequential([encoder, decoder])
-    autoencoder.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
-    # Fit & validate Autoencoder
-    autoencoder.fit(temp_traces, temp_traces,
-                    epochs=1,
-                    shuffle=True,
-                    validation_data=(atk_traces, atk_traces))
+class Deconv2Layer(Layer):
+  def __init__(self, filter, kernel, act, **kwargs):
+      super().__init__()
 
-    autoencoder.summary()
-    
-atk_reduced = encoder.predict(atk_traces)
-print(atk_reduced[0])
+      self.filter = filter
+      self.kernel = kernel
+      self.act = act
+
+      super(DeconvLayer, self).__init__(**kwargs)
+
+  def build(self, input_shape):
+    self.conv1 = _Conv1DTranspose(self.filter, self.kernel)
+    self.conv2 = _Conv1DTranspose(self.filter, self.kernel)
+    self.norm = BatchNormalization()
+    self.acti = Activation(self.act)
+
+  def get_config(self):
+      config = super(DeconvLayer, self).get_config()
+      config.update({
+          "filter": self.filter,
+          "kernel": self.kernel,
+          "act"   : self.act
+      })
+      return config
+
+  def call(self, inputs):
+    x = self.conv1(inputs)
+    x = self.conv2(x)
+    x = self.norm(x)
+    return self.acti(x)
+
+def create_model(latent_dim):
+  encoder = Sequential([
+    Conv2Layer(256, 2, 'selu'),
+    AveragePooling1D(2),
+    Conv2Layer(256, 2, 'selu'),
+    AveragePooling1D(2),
+    ConvLayer(128, 2, 'selu'),
+    AveragePooling1D(2),
+    ConvLayer(128, 2, 'selu'), 
+    AveragePooling1D(2),
+    ConvLayer(64, 2, 'selu'),
+    AveragePooling1D(2),
+    Flatten(),
+    Dense(latent_dim, activation='selu')
+  ], name='Encoder')
+
+  decoder = Sequential([
+    Dense((latent_dim * 64), activation='selu'),
+    Reshape((latent_dim, 64)),
+    UpSampling1D(2),
+    DeconvLayer(64, 2, 'selu'),
+    UpSampling1D(2),
+    DeconvLayer(128, 2, 'selu'),
+    UpSampling1D(2),
+    DeconvLayer(128, 2, 'selu'),
+    UpSampling1D(2),
+    DeconvLayer(256, 2, 'selu'),
+    UpSampling1D(2),
+    DeconvLayer(256, 2, 'selu'),
+    DeconvLayer(1, 2, 'sigmoid')
+  ], name='Decoder')
+
+  return encoder, decoder
+
+if __name__ == "__main__":
+  # Load in data
+  file = h5.File('ATMEGA_AES_v1\ATM_AES_v1_fixed_key\ASCAD_data\ASCAD_databases\ATMega8515_raw_traces.h5', 'r')
+
+  all_traces = file['traces']
+  metadata = file['metadata']
+
+  ## Metadata is build of four components
+  ##  0 : Plain_text
+  ##  1 : Cipher_text
+  ##  2 : Key
+  ##  3 : Mask
+
+  all_ptext = np.asarray([item[0] for item in metadata])
+  all_ctext =  np.asarray([item[1] for item in metadata])
+  keys =  np.asarray([item[2] for item in metadata])
+  masks =  np.asarray([item[3] for item in metadata])
+
+  # Create template traces selection
+  temp_indices = np.asarray(random.sample(range(all_traces.shape[0]), 10000))
+  temp_indices = np.sort(temp_indices)
+  temp_traces = all_traces[temp_indices]
+  temp_ptext = all_ptext[temp_indices]
+
+  # Create attack traces selection
+  atk_indices = np.asarray(random.sample(range(all_traces.shape[0]), 1000))
+  atk_indices = np.sort(atk_indices)
+  atk_traces = all_traces[atk_indices]
+
+  # Create labels for SNR calculation
+  temp_label_int = [intermediate_val(a, keys[0], 5) for a in temp_ptext]
+  temp_label_hw = [HW[a] for a in temp_label_int]
+
+  # Calculate SNR & Select relevant input window
+  snr_values = calc_snr(temp_traces, temp_label_hw, 9)
+  indices_center = np.argmax(snr_values)
+  indices_begin = (indices_center - 512) if indices_center > 511 else 0
+  indices_end =  indices_center + 512 if indices_center > 511 else 1023
+  snr_indices = range(indices_begin, indices_end)
+
+  temp_traces = np.asarray(temp_traces[:, snr_indices])
+  atk_traces = np.asarray(atk_traces[:, snr_indices])
+  temp_traces = temp_traces.astype('float32')
+  atk_traces = atk_traces.astype('float32')
+
+  max_val = np.max(temp_traces)
+  temp_traces = np.divide(temp_traces, max_val)
+
+  max_val = np.max(atk_traces)
+  atk_traces = np.divide(atk_traces, max_val)
+
+  temp_traces = np.expand_dims(temp_traces, axis=2)
+  atk_traces = np.expand_dims(atk_traces, axis=2)
+
+  # Create Autoencoder
+  latent_dim = 32
+  with tf.device('/GPU:0'):
+      encoder, decoder = create_model(latent_dim)
+      autoencoder = Sequential([encoder, decoder])
+      
+      opt = Adam(learning_rate=1e-4)
+      autoencoder.compile(loss='mse', optimizer=opt, metrics=['accuracy'])
+      # Fit & validate Autoencoder
+      autoencoder.fit(temp_traces, temp_traces,
+                      epochs=50,
+                      shuffle=True,
+                      validation_data=(atk_traces, atk_traces))
+      
+      autoencoder.summary()
+      
+
+  encoder.save("encoder_dim_32.h5")

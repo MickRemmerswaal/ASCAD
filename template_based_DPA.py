@@ -84,7 +84,32 @@ def POI_selection(type, temp_input, temp_label, atk_input, amount_of_values, n_p
 
         processed_input_temp, processed_input_atk = proc.preprocess(new_temp_input, temp_label, new_atk_input)
         return processed_input_temp, processed_input_atk, snr
+    
+    elif "AE":
+        name = "encoder_dim_" + str(n_pois) + ".h5"
+        proc = prep.DL_Preprocessor(name)
+        snr = calc_snr(temp_input, temp_label, amount_of_values)
 
+        # Construct window to reduce dimensions beforehand
+        time_window_center = np.argmax(snr)
+        window_begin = (time_window_center - 500) if time_window_center > 500 else 0
+        window_end =  time_window_center + 500
+        window = range(window_begin, window_end)
+
+        new_temp_input = temp_input[:, window]
+        new_atk_input = atk_input[:, window]
+
+        max_val = np.max(new_temp_input)
+        new_temp_input = np.divide(new_temp_input, max_val)
+
+        max_val = np.max(new_atk_input)
+        new_atk_input = np.divide(new_atk_input, max_val)
+
+        new_temp_input = np.expand_dims(new_temp_input, axis=2)
+        new_atk_input = np.expand_dims(new_atk_input, axis=2)
+
+        processed_input_temp, processed_input_atk = proc.preprocess(new_temp_input, new_atk_input)
+        return processed_input_temp, processed_input_atk, snr
     else:
         print("Error: please select valid processor(SOST, LDA, PCA)")
 
@@ -196,7 +221,7 @@ if __name__ == "__main__":
     ####################################
     ### FIXED KEY TEMPLATE BASED DPA ###
     ####################################
-
+    print("Loading data....")
     # Load in data
     file = h5.File('ATMEGA_AES_v1\ATM_AES_v1_fixed_key\ASCAD_data\ASCAD_databases\ATMega8515_raw_traces.h5', 'r')
 
@@ -214,7 +239,6 @@ if __name__ == "__main__":
     keys =  np.asarray([item[2] for item in metadata])
     masks =  np.asarray([item[3] for item in metadata])
 
-
     # Create template traces selection
     temp_indices = np.asarray(random.sample(range(all_traces.shape[0]), 10000))
     temp_indices = np.sort(temp_indices)
@@ -227,6 +251,9 @@ if __name__ == "__main__":
     atk_traces = all_traces[atk_indices]
     atk_ptext = all_ptext[atk_indices]
 
+    print("Done loading data")
+
+    
     # Define Paramter Grid Search
     params = [{
         "poi_spacing":      [20],
@@ -237,11 +264,16 @@ if __name__ == "__main__":
         "n_pois":           [1, 2, 3, 4, 5, 6, 7, 8],        
         "poi_type":         ["LDA", "PCA"]
         }]
-        
-    combinations = list(ParameterGrid(params))
+    
+    AE_params = {
+        "poi_type":     ["AE"],
+        "n_pois":       [2, 4, 10, 20, 50, 100],
+        "poi_spacing":  [20]
+    }
+    combinations = list(ParameterGrid(AE_params))
 
     performances = []    
-    attack_byte = 7
+    attack_byte = 3
 
     # Perform T-DPA on the attack byte with selected parameters
     for param in combinations:
@@ -252,7 +284,7 @@ if __name__ == "__main__":
     print("done")
 
     # Save performances in csv file
-    csv_file_name = "results_fixed_key_byte"+ str(attack_byte)+".csv"
+    csv_file_name = "results_AE_fixed_key_byte"+ str(attack_byte)+".csv"
     b = open(csv_file_name, 'w')
     a = csv.writer(b)
     data = performances
@@ -261,7 +293,6 @@ if __name__ == "__main__":
 
     '''
 
-
     temp_traces = all_traces[0:8000]
     temp_ptext = all_ptext[0:8000]
 
@@ -269,29 +300,34 @@ if __name__ == "__main__":
     temp_label_int = all_label_int[0:8000]
     temp_label_hw = [HW[a] for a in temp_label_int]
 
-    poi_type = "LDA"
-    attack_byte = 1
+    poi_type = "AE"
+    attack_byte = 6
 
     # Process input for template creation    
-    processed_input_temp, processed_input_atk, snr = POI_selection(poi_type, temp_traces, temp_label_hw, atk_traces, 9)
-
+    print("Selecting POI's...")
+    processed_input_temp, processed_input_atk = POI_selection(poi_type, temp_traces, temp_label_hw, atk_traces, 9)
+    print("POI's selected")
     #plt.plot(snr)
     #plt.show(block=True)
 
     # Template creation
+    print("Creating Templates...")
     template_means, template_covs = create_templates(processed_input_temp, temp_label_hw, 9)
-
+    print("Templates created!")
+    
     ##################
     # Perform attack #
     ##################
+    print("Performing attack!")
     guess_agg = perform_attack(processed_input_atk, atk_ptext, template_means, template_covs, 9, attack_byte)
 
     actual_key_byte = keys[0][attack_byte]
 
     rankings = np.where(guess_agg==actual_key_byte)[2]
     rankings = abs(rankings - 255)
-    
+    print("Attacks finished, displaying results")
+
     plt.plot(rankings)
     plt.show(block=True)
 
-'''
+    '''
